@@ -2,10 +2,10 @@ name: "Main"
 
 on:
   push:
-    branches-ignore:
-      - fix-format-viewport-restore
-    tags-ignore:
-      - "viewport-fix-v*"
+    branches:
+      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: write
