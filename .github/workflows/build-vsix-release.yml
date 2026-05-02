@@ -1,0 +1,67 @@
+name: Build VSIX release
+
+on:
+  push:
+    branches:
+      - fix-format-viewport-restore
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update"
+        required: true
+        default: "viewport-fix-v12.4.0-viewport"
+      prerelease:
+        description: "Mark the GitHub release as a prerelease"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build VSIX
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check types
+        run: npm run check-types
+
+      - name: Compile extension
+        run: npm run compile
+
+      - name: Package VSIX
+        run: npx vsce package --out prettier-vscode-viewport-fix.vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prettier-vscode-viewport-fix
+          path: prettier-vscode-viewport-fix.vsix
+          if-no-files-found: error
+
+      - name: Create or update release
+        if: github.event_name == 'workflow_dispatch'
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: prettier-vscode-viewport-fix.vsix
+          allowUpdates: true
+          replacesArtifacts: true
+          prerelease: ${{ inputs.prerelease }}
+          tag: ${{ inputs.tag }}
+          commit: ${{ github.sha }}
+          name: Prettier VS Code viewport fix
+          body: Local Prettier VS Code build with formatter viewport restoration.
