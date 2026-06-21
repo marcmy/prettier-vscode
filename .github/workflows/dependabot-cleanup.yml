@@ -8,9 +8,7 @@ on:
       - .github/workflows/dependabot-cleanup.yml
 
 permissions:
-  contents: read
-  actions: read
-  pull-requests: read
+  contents: write
 
 jobs:
   cleanup:
@@ -18,8 +16,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Check out repository
+      - name: Check out the cleanup branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -30,80 +31,56 @@ jobs:
             package-lock.json
             test-fixtures/plugin-tailwindcss/package-lock.json
 
-      - name: Create log directory
-        run: mkdir -p cleanup-logs
-
-      - name: Refresh root dependency tree
+      - name: Update root dependencies
         shell: bash
         run: |
-          set +e
-          npm pkg set 'devDependencies.esbuild=0.28.1' 'overrides.diff=8.0.3' 'overrides.serialize-javascript=7.0.5' > cleanup-logs/root-package-changes.txt 2>&1
-          echo $? > cleanup-logs/root-package-changes.exit
-          npm update --package-lock-only > cleanup-logs/root-update.txt 2>&1
-          echo $? > cleanup-logs/root-update.exit
-          npm audit fix --package-lock-only > cleanup-logs/root-audit-fix.txt 2>&1
-          echo $? > cleanup-logs/root-audit-fix.exit
-          npm audit --json > cleanup-logs/root-audit.json 2>&1
-          echo $? > cleanup-logs/root-audit.exit
-          exit 0
+          set -euo pipefail
+          npm pkg set 'devDependencies.esbuild=0.28.1' 'overrides.diff=8.0.3' 'overrides.serialize-javascript=7.0.5'
+          npm update --package-lock-only
+          npm audit fix --package-lock-only
+          npm audit --audit-level=low
 
-      - name: Refresh Tailwind test fixture dependency tree
+      - name: Update Tailwind fixture dependencies
         shell: bash
         working-directory: test-fixtures/plugin-tailwindcss
         run: |
-          set +e
-          npm update --package-lock-only > ../../cleanup-logs/fixture-update.txt 2>&1
-          echo $? > ../../cleanup-logs/fixture-update.exit
-          npm audit fix --package-lock-only > ../../cleanup-logs/fixture-audit-fix.txt 2>&1
-          echo $? > ../../cleanup-logs/fixture-audit-fix.exit
-          npm audit --json > ../../cleanup-logs/fixture-audit.json 2>&1
-          echo $? > ../../cleanup-logs/fixture-audit.exit
-          exit 0
+          set -euo pipefail
+          npm update --package-lock-only
+          npm audit fix --package-lock-only
+          npm audit --audit-level=low
 
-      - name: Install root dependencies exactly
+      - name: Verify root dependency tree
         shell: bash
         run: |
-          set +e
-          npm ci > cleanup-logs/root-ci.txt 2>&1
-          echo $? > cleanup-logs/root-ci.exit
-          exit 0
+          set -euo pipefail
+          npm ci
+          npm run check-types
+          npm run lint
+          npm run compile
 
-      - name: Run root checks
-        shell: bash
-        run: |
-          set +e
-          npm run check-types > cleanup-logs/check-types.txt 2>&1
-          echo $? > cleanup-logs/check-types.exit
-          npm run lint > cleanup-logs/lint.txt 2>&1
-          echo $? > cleanup-logs/lint.exit
-          npm run compile > cleanup-logs/compile.txt 2>&1
-          echo $? > cleanup-logs/compile.exit
-          exit 0
-
-      - name: Install Tailwind fixture
-        shell: bash
+      - name: Verify Tailwind fixture dependency tree
         working-directory: test-fixtures/plugin-tailwindcss
-        run: |
-          set +e
-          npm ci > ../../cleanup-logs/fixture-ci.txt 2>&1
-          echo $? > ../../cleanup-logs/fixture-ci.exit
-          exit 0
+        run: npm ci
 
-      - name: Record diff
+      - name: Validate dependency-only diff
         shell: bash
         run: |
-          git diff --check > cleanup-logs/diff-check.txt 2>&1 || true
-          git diff --stat > cleanup-logs/diff-stat.txt 2>&1 || true
-          git diff --name-only > cleanup-logs/diff-files.txt 2>&1 || true
+          set -euo pipefail
+          git diff --check
+          unexpected="$(git diff --name-only | grep -vE '^(package.json|package-lock.json|test-fixtures/plugin-tailwindcss/package-lock.json)$' || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo "Unexpected changed files:"
+            echo "$unexpected"
+            exit 1
+          fi
+          git diff --stat
 
-      - name: Upload dependency files and diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dependabot-cleanup-diagnostics
-          path: |
-            package.json
-            package-lock.json
-            test-fixtures/plugin-tailwindcss/package-lock.json
-            cleanup-logs
-          if-no-files-found: error
+      - name: Commit verified dependency updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json test-fixtures/plugin-tailwindcss/package-lock.json
+          git commit -m "chore: update vulnerable dependencies"
+          git push origin HEAD:${{ github.head_ref }}
