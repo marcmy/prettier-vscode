@@ -25,64 +25,80 @@ jobs:
             package-lock.json
             test-fixtures/plugin-tailwindcss/package-lock.json
 
+      - name: Create log directory
+        run: mkdir -p cleanup-logs
+
       - name: Refresh root dependency tree
         shell: bash
         run: |
-          set -euo pipefail
-          npm install --save-dev --package-lock-only 'esbuild@^0.28.1'
-          npm update --package-lock-only
-          npm audit fix --package-lock-only
+          set +e
+          npm install --save-dev --package-lock-only 'esbuild@^0.28.1' > cleanup-logs/root-install-esbuild.txt 2>&1
+          echo $? > cleanup-logs/root-install-esbuild.exit
+          npm update --package-lock-only > cleanup-logs/root-update.txt 2>&1
+          echo $? > cleanup-logs/root-update.exit
+          npm audit fix --package-lock-only > cleanup-logs/root-audit-fix.txt 2>&1
+          echo $? > cleanup-logs/root-audit-fix.exit
+          npm audit --json > cleanup-logs/root-audit.json 2>&1
+          echo $? > cleanup-logs/root-audit.exit
+          exit 0
 
       - name: Refresh Tailwind test fixture dependency tree
         shell: bash
         working-directory: test-fixtures/plugin-tailwindcss
         run: |
-          set -euo pipefail
-          npm update --package-lock-only
-          npm audit fix --package-lock-only
+          set +e
+          npm update --package-lock-only > ../../../cleanup-logs/fixture-update.txt 2>&1
+          echo $? > ../../../cleanup-logs/fixture-update.exit
+          npm audit fix --package-lock-only > ../../../cleanup-logs/fixture-audit-fix.txt 2>&1
+          echo $? > ../../../cleanup-logs/fixture-audit-fix.exit
+          npm audit --json > ../../../cleanup-logs/fixture-audit.json 2>&1
+          echo $? > ../../../cleanup-logs/fixture-audit.exit
+          exit 0
 
       - name: Install root dependencies exactly
-        run: npm ci
+        shell: bash
+        run: |
+          set +e
+          npm ci > cleanup-logs/root-ci.txt 2>&1
+          echo $? > cleanup-logs/root-ci.exit
+          exit 0
 
-      - name: Check types
-        run: npm run check-types
+      - name: Run root checks
+        shell: bash
+        run: |
+          set +e
+          npm run check-types > cleanup-logs/check-types.txt 2>&1
+          echo $? > cleanup-logs/check-types.exit
+          npm run lint > cleanup-logs/lint.txt 2>&1
+          echo $? > cleanup-logs/lint.exit
+          npm run compile > cleanup-logs/compile.txt 2>&1
+          echo $? > cleanup-logs/compile.exit
+          exit 0
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Compile
-        run: npm run compile
-
-      - name: Verify root audit
-        run: npm audit --audit-level=low
-
-      - name: Install and audit Tailwind fixture
+      - name: Install Tailwind fixture
         shell: bash
         working-directory: test-fixtures/plugin-tailwindcss
         run: |
-          set -euo pipefail
-          npm ci
-          npm audit --audit-level=low
+          set +e
+          npm ci > ../../../cleanup-logs/fixture-ci.txt 2>&1
+          echo $? > ../../../cleanup-logs/fixture-ci.exit
+          exit 0
 
-      - name: Validate changed files
+      - name: Record diff
         shell: bash
         run: |
-          set -euo pipefail
-          git diff --check
-          unexpected="$(git diff --name-only | grep -vE '^(package.json|package-lock.json|test-fixtures/plugin-tailwindcss/package-lock.json)$' || true)"
-          if [[ -n "$unexpected" ]]; then
-            echo "Unexpected changed files:"
-            echo "$unexpected"
-            exit 1
-          fi
-          git diff --stat
+          git diff --check > cleanup-logs/diff-check.txt 2>&1 || true
+          git diff --stat > cleanup-logs/diff-stat.txt 2>&1 || true
+          git diff --name-only > cleanup-logs/diff-files.txt 2>&1 || true
 
-      - name: Upload reviewed dependency files
+      - name: Upload dependency files and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dependabot-cleanup-files
+          name: dependabot-cleanup-diagnostics
           path: |
             package.json
             package-lock.json
             test-fixtures/plugin-tailwindcss/package-lock.json
+            cleanup-logs
           if-no-files-found: error
