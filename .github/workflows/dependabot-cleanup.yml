@@ -26,19 +26,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            test-fixtures/plugin-tailwindcss/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Create log directory
         run: mkdir -p cleanup-logs
 
-      - name: Refresh root dependency tree
+      - name: Refresh root lockfile only
         shell: bash
         run: |
           set +e
-          npm pkg set 'devDependencies.esbuild=0.28.1' 'overrides.diff=8.0.3' 'overrides.serialize-javascript=7.0.5' > cleanup-logs/root-package-changes.txt 2>&1
-          echo $? > cleanup-logs/root-package-changes.exit
           npm update --package-lock-only > cleanup-logs/root-update.txt 2>&1
           echo $? > cleanup-logs/root-update.exit
           npm audit fix --package-lock-only > cleanup-logs/root-audit-fix.txt 2>&1
@@ -47,17 +43,14 @@ jobs:
           echo $? > cleanup-logs/root-audit.exit
           exit 0
 
-      - name: Refresh Tailwind test fixture dependency tree
+      - name: Explain remaining alert packages
         shell: bash
-        working-directory: test-fixtures/plugin-tailwindcss
         run: |
           set +e
-          npm update --package-lock-only > ../../cleanup-logs/fixture-update.txt 2>&1
-          echo $? > ../../cleanup-logs/fixture-update.exit
-          npm audit fix --package-lock-only > ../../cleanup-logs/fixture-audit-fix.txt 2>&1
-          echo $? > ../../cleanup-logs/fixture-audit-fix.exit
-          npm audit --json > ../../cleanup-logs/fixture-audit.json 2>&1
-          echo $? > ../../cleanup-logs/fixture-audit.exit
+          for package in js-yaml serialize-javascript uuid picomatch minimatch; do
+            npm explain "$package" > "cleanup-logs/explain-$package.txt" 2>&1
+            echo $? > "cleanup-logs/explain-$package.exit"
+          done
           exit 0
 
       - name: Install and verify root dependencies
@@ -74,15 +67,6 @@ jobs:
           echo $? > cleanup-logs/compile.exit
           exit 0
 
-      - name: Install Tailwind fixture
-        shell: bash
-        working-directory: test-fixtures/plugin-tailwindcss
-        run: |
-          set +e
-          npm ci > ../../cleanup-logs/fixture-ci.txt 2>&1
-          echo $? > ../../cleanup-logs/fixture-ci.exit
-          exit 0
-
       - name: Record diff
         shell: bash
         run: |
@@ -90,14 +74,12 @@ jobs:
           git diff --stat > cleanup-logs/diff-stat.txt 2>&1 || true
           git diff --name-only > cleanup-logs/diff-files.txt 2>&1 || true
 
-      - name: Upload dependency files and diagnostics
+      - name: Upload root lockfile and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dependabot-cleanup-diagnostics
+          name: dependabot-root-lockfile-diagnostics
           path: |
-            package.json
             package-lock.json
-            test-fixtures/plugin-tailwindcss/package-lock.json
             cleanup-logs
           if-no-files-found: error
