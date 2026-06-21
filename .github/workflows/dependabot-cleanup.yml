@@ -1,0 +1,98 @@
+name: Dependabot cleanup
+
+on:
+  push:
+    branches:
+      - chore/clear-dependabot-alerts
+    paths:
+      - .github/workflows/dependabot-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            test-fixtures/plugin-tailwindcss/package-lock.json
+
+      - name: Refresh root dependency tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --save-dev --package-lock-only 'esbuild@^0.28.1'
+          npm update --package-lock-only
+          npm audit fix --package-lock-only
+
+      - name: Refresh Tailwind test fixture dependency tree
+        shell: bash
+        working-directory: test-fixtures/plugin-tailwindcss
+        run: |
+          set -euo pipefail
+          npm update --package-lock-only
+          npm audit fix --package-lock-only
+
+      - name: Install root dependencies exactly
+        run: npm ci
+
+      - name: Check types
+        run: npm run check-types
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Verify root audit is clean
+        run: npm audit --audit-level=low
+
+      - name: Install and audit Tailwind fixture
+        shell: bash
+        working-directory: test-fixtures/plugin-tailwindcss
+        run: |
+          set -euo pipefail
+          npm ci
+          npm audit --audit-level=low
+
+      - name: Validate changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          unexpected="$(git diff --name-only | grep -vE '^(package.json|package-lock.json|test-fixtures/plugin-tailwindcss/package-lock.json)$' || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo "Unexpected changed files:"
+            echo "$unexpected"
+            exit 1
+          fi
+          git diff --stat
+
+      - name: Commit dependency updates and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/dependabot-cleanup.yml
+          git add package.json package-lock.json test-fixtures/plugin-tailwindcss/package-lock.json
+          if git diff --cached --quiet; then
+            echo "No dependency changes were produced."
+            exit 1
+          fi
+          git commit -m "chore: update vulnerable dependencies"
+          git push
