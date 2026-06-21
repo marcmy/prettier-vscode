@@ -37,8 +37,8 @@ jobs:
         shell: bash
         run: |
           set +e
-          npm install --save-dev --package-lock-only 'esbuild@^0.28.1' > cleanup-logs/root-install-esbuild.txt 2>&1
-          echo $? > cleanup-logs/root-install-esbuild.exit
+          npm pkg set 'devDependencies.esbuild=0.28.1' 'overrides.diff=8.0.3' 'overrides.serialize-javascript=7.0.5' > cleanup-logs/root-package-changes.txt 2>&1
+          echo $? > cleanup-logs/root-package-changes.exit
           npm update --package-lock-only > cleanup-logs/root-update.txt 2>&1
           echo $? > cleanup-logs/root-update.exit
           npm audit fix --package-lock-only > cleanup-logs/root-audit-fix.txt 2>&1
@@ -52,12 +52,12 @@ jobs:
         working-directory: test-fixtures/plugin-tailwindcss
         run: |
           set +e
-          npm update --package-lock-only > ../../../cleanup-logs/fixture-update.txt 2>&1
-          echo $? > ../../../cleanup-logs/fixture-update.exit
-          npm audit fix --package-lock-only > ../../../cleanup-logs/fixture-audit-fix.txt 2>&1
-          echo $? > ../../../cleanup-logs/fixture-audit-fix.exit
-          npm audit --json > ../../../cleanup-logs/fixture-audit.json 2>&1
-          echo $? > ../../../cleanup-logs/fixture-audit.exit
+          npm update --package-lock-only > ../../cleanup-logs/fixture-update.txt 2>&1
+          echo $? > ../../cleanup-logs/fixture-update.exit
+          npm audit fix --package-lock-only > ../../cleanup-logs/fixture-audit-fix.txt 2>&1
+          echo $? > ../../cleanup-logs/fixture-audit-fix.exit
+          npm audit --json > ../../cleanup-logs/fixture-audit.json 2>&1
+          echo $? > ../../cleanup-logs/fixture-audit.exit
           exit 0
 
       - name: Install root dependencies exactly
@@ -85,8 +85,8 @@ jobs:
         working-directory: test-fixtures/plugin-tailwindcss
         run: |
           set +e
-          npm ci > ../../../cleanup-logs/fixture-ci.txt 2>&1
-          echo $? > ../../../cleanup-logs/fixture-ci.exit
+          npm ci > ../../cleanup-logs/fixture-ci.txt 2>&1
+          echo $? > ../../cleanup-logs/fixture-ci.exit
           exit 0
 
       - name: Record diff
