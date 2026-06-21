@@ -1,14 +1,11 @@
 name: Dependabot cleanup
 
 on:
-  push:
+  pull_request:
     branches:
-      - chore/clear-dependabot-alerts
+      - main
     paths:
       - .github/workflows/dependabot-cleanup.yml
-
-permissions:
-  contents: write
 
 jobs:
   cleanup:
@@ -18,8 +15,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -58,7 +53,7 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Verify root audit is clean
+      - name: Verify root audit
         run: npm audit --audit-level=low
 
       - name: Install and audit Tailwind fixture
@@ -82,17 +77,12 @@ jobs:
           fi
           git diff --stat
 
-      - name: Commit dependency updates and remove this workflow
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/dependabot-cleanup.yml
-          git add package.json package-lock.json test-fixtures/plugin-tailwindcss/package-lock.json
-          if git diff --cached --quiet; then
-            echo "No dependency changes were produced."
-            exit 1
-          fi
-          git commit -m "chore: update vulnerable dependencies"
-          git push
+      - name: Upload reviewed dependency files
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependabot-cleanup-files
+          path: |
+            package.json
+            package-lock.json
+            test-fixtures/plugin-tailwindcss/package-lock.json
+          if-no-files-found: error
