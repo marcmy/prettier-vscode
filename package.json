@@ -472,5 +472,9 @@
     "publisherDisplayName": "Prettier",
     "publisherId": "d16f4e39-2ffb-44e3-9c0d-79d873570e3a",
     "isPreReleaseVersion": false
+  },
+  "overrides": {
+    "diff": "8.0.3",
+    "serialize-javascript": "7.0.5"
   }
 }
